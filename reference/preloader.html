@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mouli Prasanth — Preloader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&family=Instrument+Serif:ital@1&family=Manrope:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--void:#08070D;--violet:#7C5CFF;--pink:#FF4FD8;--text:#F2F0FF;--muted:#A9A3C4}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--void);color:var(--text);font-family:Manrope,Inter,system-ui,sans-serif;overflow:hidden}
+#stage{position:fixed;inset:0;overflow:hidden}
+#spot{position:absolute;left:50%;top:50%;width:900px;height:900px;margin:-450px 0 0 -450px;border-radius:50%;
+  background:radial-gradient(circle,rgba(124,92,255,.16) 0%,rgba(124,92,255,.05) 35%,transparent 65%);opacity:0}
+#glow{position:absolute;left:50%;top:44%;width:620px;height:620px;margin:-310px 0 0 -310px;border-radius:50%;
+  background:radial-gradient(circle,rgba(124,92,255,.32),rgba(255,79,216,.08) 45%,transparent 70%);opacity:0}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+#dot{position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#fff;
+  box-shadow:0 0 18px 4px rgba(200,190,255,.65);transform:scale(0)}
+#bar{position:absolute;left:0;top:0;width:58px;height:12px;margin:-6px 0 0 -6px;border-radius:8px;transform-origin:6px 6px;
+  background:linear-gradient(90deg,#fff,rgba(220,214,255,.85) 60%,rgba(124,92,255,.0));box-shadow:0 0 16px rgba(200,190,255,.55);opacity:0}
+#word{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);white-space:nowrap;
+  font-family:Syne,Inter,system-ui,sans-serif;font-weight:800;font-size:clamp(56px,11vw,168px);letter-spacing:-.02em;line-height:1;
+  background:linear-gradient(180deg,#FFFFFF 0%,#E6E1FF 42%,#9C95B8 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  clip-path:inset(0 100% 0 0);filter:drop-shadow(0 6px 30px rgba(124,92,255,.25))}
+#sub{position:absolute;left:0;top:0;font-size:clamp(14px,1.3vw,19px);font-weight:700;color:var(--text);opacity:0;white-space:nowrap}
+#sub em{font-family:'Instrument Serif',Lora,serif;font-weight:400;font-size:1.25em;color:#d8d3f0;background:linear-gradient(90deg,var(--violet),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+nav{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:center;padding:22px 34px;opacity:0;transform:translateY(-10px)}
+nav b{font-family:Syne,Inter,sans-serif;font-weight:800;letter-spacing:.06em;font-size:14px}
+nav b span{color:var(--pink)}
+nav ul{display:flex;gap:26px;list-style:none;font-size:11px;letter-spacing:.14em;color:var(--muted)}
+nav ul li:first-child{color:var(--text)}
+#cta{position:absolute;right:34px;bottom:30px;opacity:0;font-size:12px;color:var(--text);display:flex;align-items:center;gap:10px}
+#cta i{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--violet),var(--pink));display:inline-block}
+#skip{position:absolute;right:20px;bottom:20px;font:500 11px Manrope,Inter,sans-serif;color:var(--muted);background:rgba(255,255,255,.05);border:1px solid #2a2638;border-radius:8px;padding:6px 10px;cursor:pointer;z-index:5}
+#replay{display:none}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="spot"></div><div id="glow"></div>
+  <canvas id="cv"></canvas>
+  <div id="dot"></div><div id="bar"></div>
+  <div id="word">MOULI</div>
+  <div id="sub">UI/UX &amp; Graphic <em>Designer</em></div>
+  <nav><b>MOULI PRASANTH<span>*</span></b><ul><li>HOME</li><li>WORK</li><li>PLAYGROUND</li><li>PROCESS</li><li>ABOUT</li><li>CONTACT</li></ul></nav>
+  <div id="cta"><span>Say hello</span><i></i></div>
+  <button id="skip" type="button">Skip</button>
+</div>
+<script>
+/* ======================================================================
+   "Spark → Word → Morph → Particle Portrait" preloader (vanilla JS).
+   Port to React: put this in a client component's useEffect and keep the
+   same DOM ids/refs. Photo = transparent PNG cutout (PORTRAIT_SRC).
+   ====================================================================== */
+const PORTRAIT_SRC = 'mouli-cutout.png';
+const NAME = 'MOULI';
+const FINAL = 'PORTFOLIO';
+
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const ease = (t) => 1 - Math.pow(1 - t, 3);
+const easeInOut = (t) => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+function tween(ms, fn, e = ease) {
+  return new Promise((res) => {
+    const t0 = performance.now();
+    (function f(now) { const t = Math.min(1, (now - t0) / ms); fn(e(t), t); t < 1 ? requestAnimationFrame(f) : res(); })(t0);
+  });
+}
+let skipped = false;
+
+/* ---------- particles ---------- */
+const cv = $('cv'), ctx = cv.getContext('2d');
+let DPR = Math.min(2, devicePixelRatio || 1), W = 0, H = 0, P = [], mouse = { x: -9999, y: -9999 }, mode = 'dust';
+function resize() { W = innerWidth; H = innerHeight; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); }
+resize(); addEventListener('resize', resize);
+addEventListener('pointermove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; });
+
+function loadPortrait() {
+  return new Promise((res) => {
+    const img = new Image(); img.onload = () => res(img); img.onerror = () => res(null); img.src = PORTRAIT_SRC;
+  });
+}
+function buildTargets(img) {
+  // fit the portrait: ~72% of viewport height, centred, sitting on the word
+  const h = Math.min(H * .74, 620), w = h * img.width / img.height;
+  const ox = (W - w) / 2, oy = H * .08;
+  const step = W < 700 ? 5 : 4;
+  const c = document.createElement('canvas'); c.width = Math.round(w); c.height = Math.round(h);
+  const cx = c.getContext('2d'); cx.drawImage(img, 0, 0, c.width, c.height);
+  const d = cx.getImageData(0, 0, c.width, c.height).data, out = [];
+  for (let y = 0; y < c.height; y += step) for (let x = 0; x < c.width; x += step) {
+    const i = (y * c.width + x) * 4, a = d[i + 3];
+    if (a < 140) continue;
+    const lum = (d[i] * .299 + d[i + 1] * .587 + d[i + 2] * .114) / 255;
+    out.push({ x: ox + x + (Math.random() - .5) * step * .7, y: oy + y + (Math.random() - .5) * step * .7, lum });
+  }
+  return out;
+}
+function makeDust(n) {
+  P = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, vx: 0, vy: 0, tx: null, ty: null,
+    s: Math.random() * 1.2 + .4, a: Math.random() * .5 + .1, lum: Math.random(), tw: Math.random() * 6.28, delay: Math.random() }));
+}
+let assembleT0 = 0, ASSEMBLE = 2300;
+function assignTargets(targets) {
+  // more targets than dust? add particles; fewer? extras stay as background dust
+  while (P.length < targets.length) P.push({ x: Math.random() * W, y: Math.random() * H, vx: 0, vy: 0, s: 1, a: .2, lum: .5, tw: Math.random() * 6.28, delay: Math.random() });
+  P.sort(() => Math.random() - .5);
+  P.forEach((p, i) => { const t = targets[i]; if (t) { p.tx = t.x; p.ty = t.y; p.lum = t.lum; p.sx = p.x; p.sy = p.y; p.ang = Math.random() * 6.28; } else { p.tx = null; } });
+  assembleT0 = performance.now(); mode = 'assemble';
+}
+function draw(now) {
+  ctx.clearRect(0, 0, W, H);
+  for (const p of P) {
+    let x, y, alpha, size;
+    if (mode === 'dust' || p.tx == null) {
+      p.tw += .03; p.x += Math.sin(p.tw) * .15; p.y -= .08;
+      if (p.y < -5) p.y = H + 5;
+      x = p.x; y = p.y; size = p.s; alpha = p.a * (.6 + .4 * Math.sin(p.tw * 2)) * (mode === 'dust' ? 1 : .5);
+      ctx.fillStyle = `rgba(214,208,255,${alpha})`;
+    } else {
+      // swirl in along a curved path, staggered by p.delay
+      const t = Math.max(0, Math.min(1, ((now - assembleT0) - p.delay * 900) / (ASSEMBLE - 900)));
+      const e = easeInOut(t);
+      const swirl = (1 - e) * 120;
+      const bx = p.sx + (p.tx - p.sx) * e + Math.cos(p.ang + e * 4) * swirl;
+      const by = p.sy + (p.ty - p.sy) * e + Math.sin(p.ang + e * 4) * swirl;
+      // mouse repel once settled
+      let rx = 0, ry = 0;
+      if (t >= 1) {
+        const dx = bx - mouse.x, dy = by - mouse.y, d2 = dx * dx + dy * dy;
+        if (d2 < 9000) { const f = (1 - d2 / 9000) * 26; const d = Math.sqrt(d2) || 1; rx = dx / d * f; ry = dy / d * f; }
+        p.tw += .05;
+      }
+      p.x = bx + rx + (t >= 1 ? Math.sin(p.tw) * .35 : 0); p.y = by + ry;
+      x = p.x; y = p.y;
+      const l = p.lum;
+      size = 1.1 + l * 1.5;
+      alpha = (.34 + l * .66) * (.35 + .65 * e);
+      // tint: dark pixels -> violet, light pixels -> lilac white
+      const r = Math.round(124 + (242 - 124) * l), g = Math.round(92 + (240 - 92) * l), b = 255;
+      ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+    }
+    ctx.fillRect(x, y, size, size);
+  }
+  requestAnimationFrame(draw);
+}
+
+/* ---------- timeline ---------- */
+async function play() {
+  const word = $('word'), dot = $('dot'), bar = $('bar'), spot = $('spot');
+  makeDust(Math.round(W * H / 2600));
+  requestAnimationFrame(draw);
+  const imgP = loadPortrait();
+
+  // 1. spotlight + spark
+  spot.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 700, fill: 'forwards' });
+  const wr = word.getBoundingClientRect();
+  const dotY = wr.bottom + 18;
+  dot.style.top = dotY + 'px';
+  await tween(420, (e) => { dot.style.transform = `scale(${e})`; });
+  await sleep(350);
+
+  // 2. light bar sweeps out of the spark and writes the name
+  const startX = W / 2, baseY = wr.top + wr.height * .55;
+  bar.style.opacity = 1;
+  await tween(380, (e) => {
+    bar.style.transform = `translate(${startX}px,${dotY - 6}px) rotate(${-20 - e * 140}deg) scaleX(${e})`;
+  });
+  await tween(1050, (e) => {
+    const x = wr.left + wr.width * e;
+    word.style.clipPath = `inset(0 ${100 - e * 100}% 0 0)`;
+    bar.style.transform = `translate(${x}px,${baseY}px) rotate(${-68 + Math.sin(e * 9) * 6}deg) scaleX(1)`;
+    dot.style.transform = `translate(${(x - W / 2) * .35}px,0) scale(${1 - e * .3})`;
+  }, (t) => t);
+  // bar + spark collapse
+  await tween(300, (e) => { bar.style.opacity = 1 - e; dot.style.opacity = 1 - e; });
+  await sleep(250);
+
+  // 3. letters scramble and morph into PORTFOLIO
+  const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#&*%@';
+  await tween(1000, (e) => {
+    const n = Math.round(NAME.length + (FINAL.length - NAME.length) * Math.min(1, e * 1.6));
+    let s = '';
+    for (let i = 0; i < n; i++) {
+      const settled = e > (i + 1) / (FINAL.length + 1);
+      s += settled ? FINAL[i] : (Math.random() < .55 && NAME[i] ? NAME[i] : glyphs[Math.random() * glyphs.length | 0]);
+    }
+    word.textContent = s;
+  }, (t) => t);
+  word.textContent = FINAL;
+  await sleep(250);
+
+  // 4. word drops to the bottom, subtitle + nav appear
+  const img = await imgP;
+  const targetY = H * .78;
+  const curY = word.getBoundingClientRect().top + word.getBoundingClientRect().height / 2;
+  $('glow').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 1600, fill: 'forwards' });
+  if (img) assignTargets(buildTargets(img));
+  await tween(900, (e) => {
+    word.style.transform = `translate(-50%, calc(-50% + ${(targetY - curY) * e}px)) scale(${1 + e * .12})`;
+  }, easeInOut);
+  const fr = word.getBoundingClientRect();
+  const sub = $('sub'); sub.style.left = (fr.left + 8) + 'px'; sub.style.top = (fr.bottom + 6) + 'px';
+  sub.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 600, fill: 'forwards' });
+  document.querySelector('nav').animate([{ opacity: 0, transform: 'translateY(-10px)' }, { opacity: 1, transform: 'none' }], { duration: 700, delay: 300, fill: 'forwards' });
+  $('cta').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 600, delay: 600, fill: 'forwards' });
+  spot.animate([{ opacity: 1 }, { opacity: .35 }], { duration: 1200, fill: 'forwards' });
+  $('skip').style.display = 'none';
+  document.title = 'done';
+}
+$('skip').onclick = () => { location.hash = 'skip'; };
+play();
+</script>
+</body>
+</html>
